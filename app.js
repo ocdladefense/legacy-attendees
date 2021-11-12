@@ -332,13 +332,13 @@ function sendTestEmails(lineIds){
 
     
     function filterByProduct2Id(product2Id){
-		$eventId = $('select[id*="eventPicker"]').val();
+		$eventId = $('select[id*="event-picker"]').val();
         window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&product2Id="+product2Id;
     }
     
     
     function orderBy(orderBy){
-		$eventId = $('select[id*="eventPicker"]').val();
+		$eventId = $('select[id*="event-picker"]').val();
 		
 		$product2Id = getUrlParameter('product2Id');
         if(null == $eventId) {
