@@ -17,8 +17,36 @@ var getUrlParameter = function getUrlParameter(sParam) {
     }
 };
 
+// apex__appPreferences
+function getCookie(name) {
+    var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
 
-$(function(){
+
+function modal(lineId,title,content){ 
+	var box = new SimpleDialog("hersh"+Math.random(), true);
+	box.sendUserConfirmEmail = function(){testEmails(lineId);};
+	box.sendAttendeeConfirmEmail = function(){sendEmails(lineId);};
+	parent.box = box;
+	box.setTitle(title);
+	box.createDialog();
+	box.setWidth(800);
+
+	box.setContentInnerHTML(content + "<div class='modal-actions'><button class='btn' onclick='window.parent.box.hide(); return false;'>Cancel</button>"+
+	"<button class='btn' onclick='window.parent.box.sendUserConfirmEmail(); window.parent.box.hide();return false;'>Test Email</button>"+
+							"<button class='btn' onclick='window.parent.box.sendAttendeeConfirmEmail(); window.parent.box.hide();return false;'>Send Attendee Email</button></div>");
+	box.setupDefaultButtons();
+	box.show();
+}		
+
+
+
+
+// $(function(){});
+
+
+document.addEventListener("DOMContentLoaded",function() {
 
 	var helper = document.getElementById('attendee-form');
 	var buttonTestEmail = document.getElementById('send-tests');//send-tests');
@@ -34,17 +62,16 @@ $(function(){
 	buttonSendEmail.addEventListener('click',doSendBatch,true);
 	
 	buttonDoAutofillNames.addEventListener('click',doAutofillNames,true);
-	
 
+
+	let elems = document.querySelectorAll(".event-picker");
+	
+	for(var i = 0; i<elems.length; i++) {
+		elems.item(i).addEventListener("change",loadList,{capture:true});
+	}
 });
 
-/*
 
-sendTestEmail
-getEmailPreview
-sendSeminarConfirmationEmail
-
-*/
 function doAutofillNames(e){
 	var status, eventId,
 	json, crumb;
@@ -56,11 +83,9 @@ function doAutofillNames(e){
 		return false;
 	} 
 	
-	
-	
 	crumb = getCookie("apex__appPreferences");
 	
-	if(null == crumb || "" == crumb.trim()){
+	if(null == crumb || "" == crumb.trim()) {
 		eventId = getUrlParameter("eventId");	
 	} else {
 		json = JSON.parse(crumb);
@@ -73,11 +98,8 @@ function doAutofillNames(e){
 	return status;
 }
 
-// apex__appPreferences
-function getCookie(name) {
-    var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-    return v ? v[2] : null;
-}
+
+
 
 
 
@@ -89,24 +111,24 @@ function doTestBatch(e){
 
 	var ids = getSelected();
 
-	sendTestEmails(ids);
+	testEmails(ids);
 	
 	return false;
 }
 
-function doSendBatch(e){
+function doSendBatch(e) {
 
 	e.stopPropagation();
 	e.preventDefault();
 	
 	var ids = getSelected();
 	
-	sendSeminarConfirmationEmails(ids);
+	sendEmails(ids);
 	
 	return true;
 }
 
-function getSelected(){
+function getSelected() {
 	var $elems, ids = [];
 	$elems = $('input:checked');
 	$elems.each(function(){
@@ -118,7 +140,7 @@ function getSelected(){
 }
 
 
-function doAction(e){
+function doAction(e) {
 	var target, lineId, action;
 	e = e || event;
 	
@@ -136,11 +158,11 @@ function doAction(e){
 	try {
 	
 	if(action == 'preview-button') {
-		getEmailPreviews(lineId);
+		previewEmails(lineId);
 	} else if(action == 'test-button'){
-		sendTestEmails(lineId);
+		testEmails(lineId);
 	} else if(action == 'send-button'){
-		sendSeminarConfirmationEmails(lineId);
+		sendEmails(lineId);
 	}
 	
 	} catch(e) {
@@ -225,25 +247,45 @@ function uncheckAll(omitLineId){
 	}
 }
 
-function sendSeminarConfirmationEmails(lineIds){
+
+
+
+function setConfirmSentDate(lineId, d){
+	var $date = $(".line-id-" +"[name='confirmationsentdate-c']");
+}
+
+
+function hasErrors(statuses){
+	for(var i = 0; i<statuses.length; i++){
+		if(!statuses[i].isSuccess) return true;
+	}
+	
+	return false;
+}
+
+    
+
+function sendEmails(lineIds){
 	if(null == lineIds) throw new Error("No lines were accepted.");
+	
 	if(!Array.isArray(lineIds)){
 		lineIds = [lineIds];
 	}
-	
-	var sentData = sforce.apex.execute("OcdlaAttendee","sendSeminarConfirmationEmails",{lineIds:lineIds});
-	
+	var config = new sforce.Xml("MailApiConfig");
+	config.generator = "AttendeeConfirmationEmail";
 
-	var statuses = JSON.parse(sentData);
-	console.debug(statuses);
+	var statuses = sforce.apex.execute("OcdlaMail","sendEmails",{recordIds:lineIds,config:config});
 	
+	console.log(statuses);
+
+
 	var hasErrors = false;
 	var messages = "";
 	
 	var d = new Date();
 	console.log(d.toISOString());
 	
-	if(statuses.length){
+	if(statuses.length) {
 	 	for(var i = 0; i<statuses.length; i++){
 	 		var selector = ".line-id-"+statuses[i].whatId;
 	 		var $parent = $(selector).parent();
@@ -268,84 +310,71 @@ function sendSeminarConfirmationEmails(lineIds){
 }
 
 
-function setConfirmSentDate(lineId, d){
-	var $date = $(".line-id-" +"[name='confirmationsentdate-c']");
-}
-
-
-function hasErrors(statuses){
-	for(var i = 0; i<statuses.length; i++){
-		if(!statuses[i].isSuccess) return true;
+    
+function testEmails(lineIds) {
+	var status, config;
+	if(!Array.isArray(lineIds)){
+		lineIds = [lineIds];
 	}
+	config = new sforce.Xml("MailApiConfig");
+	config.generator = "AttendeeConfirmationEmail";
+
+	status = sforce.apex.execute("OcdlaMail","testEmails",{recordIds:lineIds,config:config});
+	console.log(status);
+	alert("Test emails sent to your email address.");
 	
 	return false;
 }
 
-    
-function getEmailPreviews(lineIds){
+
+
+function previewEmails(lineIds) {
 	if(!Array.isArray(lineIds)){
 		lineIds = [lineIds];
 	}
 	console.log(lineIds);
-	var emailBody = sforce.apex.execute("OcdlaAttendee","getSeminarEmailConfirmPreviews",{lineIds:lineIds});
+
+	var config = new sforce.Xml("MailApiConfig");
+	config.generator = "AttendeeConfirmationEmail";
+	config.sample = false;
+
+	var emailBody = sforce.apex.execute("OcdlaMail","previewEmails",{recordIds:lineIds,config:config});
 	modal(lineIds,"Email Preview",emailBody);
+
 	return false;
 }
-    
-function sendTestEmails(lineIds){
-	var status;
-	if(!Array.isArray(lineIds)){
-		lineIds = [lineIds];
+
+
+
+
+
+function loadList(e) {
+	e.preventDefault();
+	e.stopPropagation();
+	var target = e.target;
+		$eventId = $(target).val();
+		console.log("Selected event is: ",$eventId);
+	window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId;
+		return false;
+}
+
+
+
+function filterByProduct2Id(product2Id) {
+	$eventId = $('select[id*="event-picker"]').val();
+	window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&product2Id="+product2Id;
+}
+
+
+function orderBy(orderBy) {
+	$eventId = $('select[id*="event-picker"]').val();
+	
+	$product2Id = getUrlParameter('product2Id');
+	if(null == $eventId) {
+		window.location.href="/apex/ClickpdxOrderItems?orderBy="+orderBy;        	   
+	} else if( null == $product2Id) {
+		window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&orderBy="+orderBy;
+	} else {
+		window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&product2Id="+$product2Id+"&orderBy="+orderBy;        
 	}
-	status = sforce.apex.execute("OcdlaAttendee","testSeminarConfirmationEmails",{lineIds:lineIds});
-	console.log(status)
-	alert('Test emails sent to your email address.');
-	return false;
 }
-
-
-
-
-
-
-
-
-    
-    document.addEventListener("DOMContentLoaded",function() {
-    	let elems = document.querySelectorAll(".event-picker");
-    	
-			for(var i = 0; i<elems.length; i++) {
-				elems.item(i).addEventListener("change",loadList,{capture:true});
-			}
-    });
-    
-    function loadList(e){
-    	e.preventDefault();
-    	e.stopPropagation();
-    	var target = e.target;
-			$eventId = $(target).val();
-			console.log("Selected event is: ",$eventId);
-      window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId;
-			return false;
-    }
-    
-
-    
-    function filterByProduct2Id(product2Id){
-		$eventId = $('select[id*="event-picker"]').val();
-        window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&product2Id="+product2Id;
-    }
-    
-    
-    function orderBy(orderBy){
-		$eventId = $('select[id*="event-picker"]').val();
-		
-		$product2Id = getUrlParameter('product2Id');
-        if(null == $eventId) {
-            window.location.href="/apex/ClickpdxOrderItems?orderBy="+orderBy;        	   
-        } else if( null == $product2Id) {
-            window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&orderBy="+orderBy;
-        } else {
-					window.location.href="/apex/ClickpdxOrderItems?eventId="+$eventId+"&product2Id="+$product2Id+"&orderBy="+orderBy;        
-        }
-    }
